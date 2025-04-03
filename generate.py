@@ -1,10 +1,9 @@
 """
-Script to generate text using a shard of a model.
+Script to generate text using vlLM + Iroh.
 """
 import os
 import argparse
-from typing import Optional
-from functools import partial
+from pprint import pprint
 import pickle
 import torch.nn as nn
 from iroh_py import Node
@@ -33,16 +32,6 @@ def create_comm() -> None:
     print("Connected!")
     return node
 
-def print_layer_input(module, input, layer_index: int):
-    print(f"\nLayer: {layer_index}")
-    print(input[1].shape)
-    print(input[1])
-
-def print_layer_output(module, args, output, layer_index: int):
-    print(f"\nLayer: {layer_index}")
-    print(output[0].shape)
-    print(output[0])
-
 
 def main(model_path: str):
     rank, world_size = int(os.environ.get("RANK")), int(os.environ.get("WORLD_SIZE"))
@@ -53,6 +42,16 @@ def main(model_path: str):
     # Create communication node
     if world_size > 1:
         node = create_comm()
+
+    def print_layer_input(module, input, layer_index: int):
+        print(f"\nLayer: {layer_index}")
+        print(input[1].shape)
+        print(input[1])
+
+    def print_layer_output(module, args, output, layer_index: int):
+        print(f"\nLayer: {layer_index}")
+        print(output[0].shape)
+        print(output[0])
 
     def send_intermediate_states(module, args, output):
         hidden_states, residual = output
@@ -85,10 +84,10 @@ def main(model_path: str):
     if world_size > 1:
         model : nn.Module = llm.llm_engine.model_executor.driver_worker.model_runner.model
 
-        for layer_index, layer in enumerate(model.model.layers):
-            if layer_index == 0 or layer_index == len(model.model.layers) - 1:
-                layer.register_forward_pre_hook(partial(print_layer_input, layer_index=layer_index))
-                layer.register_forward_hook(partial(print_layer_output, layer_index=layer_index))
+        # for layer_index, layer in enumerate(model.model.layers):
+        #     if layer_index == 0 or layer_index == len(model.model.layers) - 1:
+        #         layer.register_forward_pre_hook(partial(print_layer_input, layer_index=layer_index))
+        #         layer.register_forward_hook(partial(print_layer_output, layer_index=layer_index))
 
         if rank == 0:
             final_layer : nn.Module = model.model.layers[-1]
@@ -104,12 +103,23 @@ def main(model_path: str):
             sampler : nn.Module = model.sampler
             sampler.register_forward_hook(send_output)
 
-    prompts = ["Hello, how are you?", "Hi, who are you?"]
-    sampling_params = SamplingParams(max_tokens=50, seed=69)
+    parallel_prompts, num_new_tokens = 1, 256
+    prompts = ["Hi, my name is"] # , "What is the capital of France?"]
+    batch_size = len(prompts)
+    sampling_params = SamplingParams(n=parallel_prompts, max_tokens=num_new_tokens, min_tokens=num_new_tokens, seed=69)
+    start_generate = time.perf_counter()
     outputs = llm.generate(prompts, sampling_params=sampling_params, use_tqdm=False)
+    generate_time = time.perf_counter() - start_generate
+    token_generated = batch_size * parallel_prompts * num_new_tokens
+
     if rank == world_size - 1:
-        for output in outputs:
-            print(f"{output.prompt} {output.outputs[0].text}")
+        completions_list = [completion.__dict__ for completion in outputs]
+        pprint(completions_list)
+
+    print(f"Time to generate: {generate_time:.2f} seconds")
+    print(f"Tokens generated: {token_generated}")
+    print(f"Tokens per second: {token_generated / generate_time:.2f}")
+
 
 if __name__ == "__main__":
     assert os.environ.get("HF_TOKEN") is not None, "Set HF_TOKEN environment variable"
