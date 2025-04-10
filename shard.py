@@ -8,11 +8,8 @@ import autorootcwd  # noqa: F401
 
 import os
 import argparse
-from time import perf_counter
-from contextlib import contextmanager
 from typing import Optional
 
-import torch
 import torch.nn as nn
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -51,27 +48,6 @@ def rsetattr(obj, attr_path, value):
         current = getattr(current, attr)
     
     setattr(current, attrs[-1], value)
-
-class FakeEmbedding(nn.Module):
-    def __init__(self, hidden_size, dtype):
-        super().__init__()
-        self.hidden_size = hidden_size
-        self.dtype = dtype
-
-    def forward(self, x):
-        return torch.zeros(*x.shape, self.hidden_size, device=x.device, dtype=self.dtype)
-
-class FakeLMHead(nn.Module):
-    def __init__(self, vocab_size):
-        super().__init__()
-        self.vocab_size = vocab_size
-        self.quant_method = self
-
-    def forward(self, x, *args, **kwargs):
-        return x
-
-    def apply(self, module, hidden_states, bias=None):
-        return self.forward(hidden_states)
 
 def create_shard(
     model_name: str,
@@ -131,16 +107,8 @@ def create_shard(
 
     return shard, tokenizer
 
-@contextmanager
-def time(action: str):
-    print(f"{action}...", end="")
-    start = perf_counter()
-    yield
-    end = perf_counter()
-    print(f" ({end - start:.2f}s)")
-
 def main(
-    model_name: str,
+    model: str,
     num_shards: int,
     cache_dir: Optional[str],
     local_dir: Optional[str],
@@ -152,53 +120,49 @@ def main(
 ):
     # Create local output directory
     if local_dir is not None:
+        print(f"Creating local directory {local_dir}")
         os.makedirs(local_dir, exist_ok=True)
-
-    # Create HF repository if it doesn't exist
-    if remote_dir is not None:
-        with time(f"Creating Hugging Face repository {remote_dir}"):
-            create_repo(remote_dir, exist_ok=True)
     
     # Create and save shards
     for shard_idx in range(num_shards):
         # Create a new model instance
-        with time(f"Creating shard {shard_idx+1}/{num_shards}"):
-            shard, tokenizer = create_shard(
-                model_name,
-                cache_dir,
-                shard_idx,
-                num_shards,
-                model_layers_key,
-                config_layers_key,
-                lm_head_key,
-                embed_tokens_key,
-            )
+        print(f"Creating shard {shard_idx+1}/{num_shards}")
+        shard, tokenizer = create_shard(
+            model,
+            cache_dir,
+            shard_idx,
+            num_shards,
+            model_layers_key,
+            config_layers_key,
+            lm_head_key,
+            embed_tokens_key,
+        )
 
         # Save the shard locally
         if local_dir is not None:
+            print(f"Saving shard {shard_idx+1}/{num_shards} to {local_dir}/shard_{shard_idx}")
             shard_path = os.path.join(local_dir, f"shard_{shard_idx}")
-            with time(f"Saving shard {shard_idx+1}/{num_shards} to {shard_path}"):
-                shard.save_pretrained(shard_path)
-                tokenizer.save_pretrained(shard_path)
+            shard.save_pretrained(shard_path)
+            tokenizer.save_pretrained(shard_path)
 
-        # Upload to Hugging Face Hub
-        if remote_dir is not None:
-            with time(f"Uploading shard {shard_idx+1}/{num_shards} to {remote_dir}/shard_{shard_idx}"):
+            # Upload to Hugging Face Hub
+            if remote_dir is not None:
+                shard_remote_dir = f"{remote_dir}-{shard_idx}.{num_shards}"
+                print(f"Uploading shard {shard_idx+1}/{num_shards} to {shard_remote_dir}")
                 try:
-                    upload_folder(
-                        folder_path=shard_path,
-                        repo_id=remote_dir,
-                        repo_type="model",
-                        path_in_repo=f"shard_{shard_idx}",
-                    )
+                    create_repo(shard_remote_dir, exist_ok=True)
+                except Exception as e:
+                    raise Exception(f"Error creating remote directory {shard_remote_dir}: {e}")
+                try:
+                    upload_folder(folder_path=shard_path, repo_id=shard_remote_dir, repo_type="model")
                 except Exception as e:
                     raise Exception(f"Error uploading shard {shard_idx+1}/{num_shards}: {e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-name", type=str, required=True, help="Model name to shard")
+    parser.add_argument("--model", type=str, required=True, help="Model name to shard")
     parser.add_argument("--num-shards", type=int, required=True, help="Number of shards to create"  )
-    parser.add_argument("--cache-dir", type=str, default=None, help="Cache directory for model weights")
+    parser.add_argument("--cache-dir", type=str, default=os.environ.get("CACHE_DIR", None), help="Cache directory for model weights")
     parser.add_argument("--local-dir", type=str, default=None, help="Local directory to save shards")
     parser.add_argument("--remote-dir", type=str, default=None, help="Remote directory to upload shards")
     parser.add_argument("--model-layers-key", type=str, default="model.layers")
@@ -206,7 +170,5 @@ if __name__ == "__main__":
     parser.add_argument("--lm-head-key", type=str, default="lm_head")
     parser.add_argument("--embed-tokens-key", type=str, default="model.embed_tokens")
     args = parser.parse_args()
-
-    assert os.environ.get("HF_TOKEN") is not None, "HF_TOKEN is not set"
     
     main(**vars(args)) 
