@@ -8,4 +8,12 @@ dependencies = [
     "transformers>=4.50.3",
     "vllm>=0.8.2",
     "iroh_py @ git+ssh://git@github.com/primeintellect-ai/iroh_py.git@a747724",
+    "autorootcwd>=1.0.1",
+    "loguru>=0.7.3",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+    "jupyter>=1.1.1",
 ]
