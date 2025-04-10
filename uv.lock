@@ -903,7 +903,7 @@ wheels = [
 [[package]]
 name = "iroh-py"
 version = "0.1.0"
-source = { git = "ssh://git@github.com/primeintellect-ai/iroh_py.git?rev=a747724#a747724751d2651d9ef9804e39e4d38d1251a27e" }
+source = { git = "ssh://git@github.com/primeintellect-ai/iroh_py.git?rev=ea7dbc7#ea7dbc7dc9ebe96876ef3df57ba5f1a475f3cb82" }
 
 [[package]]
 name = "isoduration"
@@ -3119,7 +3119,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "autorootcwd", specifier = ">=1.0.1" },
-    { name = "iroh-py", git = "ssh://git@github.com/primeintellect-ai/iroh_py.git?rev=a747724" },
+    { name = "iroh-py", git = "ssh://git@github.com/primeintellect-ai/iroh_py.git?rev=ea7dbc7" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "transformers", specifier = ">=4.50.3" },
     { name = "vllm", specifier = ">=0.8.2" },
