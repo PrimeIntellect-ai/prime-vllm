@@ -17,14 +17,10 @@ logger = None
 node = None
 
 def print_layer_input(_, input, layer_index: int):
-    logger.debug(f"\nLayer: {layer_index}")
-    logger.debug(input[1].shape)
-    logger.debug(input[1])
+    logger.debug(f"Layer: {layer_index} input: {input[1].shape}")
 
 def print_layer_output(_, __, output, layer_index: int):
-    logger.debug(f"\nLayer: {layer_index}")
-    logger.debug(output[0].shape)
-    logger.debug(output[0])
+    logger.debug(f"Layer: {layer_index} output: {output[0].shape}")
 
 def send_intermediate_states(_, __, output):
     hidden_states, residual = output
@@ -134,15 +130,17 @@ def main(
     generate_time = time.perf_counter() - start_generate
 
     # Print generations
+    tokens_generated = 0
     if rank == world_size - 1:
         for completion in outputs:
-            logger.info(f"{completion.prompt}{completion.outputs[0].text}")
+            for output in completion.outputs:
+                tokens_generated += len(output.token_ids)
+                logger.info(f"{completion.prompt}{output.text}")
 
-    # Print throughput
-    token_generated = len(prompts) * sampling_params.n * sampling_params.max_tokens
-    throughput = token_generated / generate_time
-    logger.info(f"Generated {token_generated} tokens in {generate_time:.2f} seconds")
-    logger.info(f"Throughput: {throughput:.2f} tokens/second")
+        # Print throughput
+        throughput = tokens_generated / generate_time
+        logger.info(f"Generated {tokens_generated} tokens in {generate_time:.2f} seconds")
+        logger.info(f"Throughput: {throughput:.2f} tokens/second")
 
     # Destroy torch.distributed process group
     destroy_process_group()
@@ -157,7 +155,7 @@ if __name__ == "__main__":
     # Engine arguments
     engine_group = parser.add_argument_group("Engine Arguments")
     engine_group.add_argument("--model", type=str, required=True)
-    engine_group.add_argument("--download-dir", type=str, default=None)
+    engine_group.add_argument("--download-dir", type=str, default=os.environ.get("CACHE_DIR", None))
     engine_group.add_argument("--tensor-parallel-size", type=int, default=1)
     engine_group.add_argument("--gpu-memory-utilization", type=float, default=0.90)
 
