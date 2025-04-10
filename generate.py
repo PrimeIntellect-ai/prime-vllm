@@ -1,63 +1,79 @@
 import os
+import sys
 import argparse
 import pickle
+from torch.distributed import destroy_process_group
 import torch.nn as nn
 import time
 from functools import partial
-from typing import Optional
+from typing import Optional, Dict, Any, List
 
-from loguru import logger
 from iroh_py import Node
 
 import autorootcwd  # noqa: F401
 
-# Global communication node
+# Globals
+logger = None
 node = None
 
-def print_layer_input(module, input, layer_index: int):
+def print_layer_input(_, input, layer_index: int):
     logger.debug(f"\nLayer: {layer_index}")
     logger.debug(input[1].shape)
     logger.debug(input[1])
 
-def print_layer_output(module, args, output, layer_index: int):
+def print_layer_output(_, __, output, layer_index: int):
     logger.debug(f"\nLayer: {layer_index}")
     logger.debug(output[0].shape)
     logger.debug(output[0])
 
-def send_intermediate_states(module, args, output):
+def send_intermediate_states(_, __, output):
     hidden_states, residual = output
-    node.send(pickle.dumps(hidden_states.to("cpu")))
-    node.send(pickle.dumps(residual.to("cpu")))
+    node.isend(pickle.dumps(hidden_states.to("cpu")), tag=0, latency=None).wait()
+    node.isend(pickle.dumps(residual.to("cpu")), tag=0, latency=None).wait()
 
-def recv_intermediate_states(module, input):
+def recv_intermediate_states(_, input):
     positions, _, _ = input
     device = positions.device
-    hidden_states = pickle.loads(node.recv()).to(device)
-    residual = pickle.loads(node.recv()).to(device)
+    hidden_states = pickle.loads(node.irecv(tag=0).wait()).to(device)
+    residual = pickle.loads(node.irecv(tag=0).wait()).to(device)
 
     return positions, hidden_states, residual
 
-def recv_output(module, args, output):
-    output = pickle.loads(node.recv())
+def recv_output(_, __, ___):
+    output = pickle.loads(node.irecv(tag=0).wait())
     return output
 
-def send_output(module, args, output):
-    node.send(pickle.dumps(output))
+def send_output(_, __, output):
+    node.isend(pickle.dumps(output), tag=0, latency=None).wait()
 
 def main(
-    model: str,
-    download_dir: Optional[str] = None,
+    prompts: List[str],
+    log_level: str,
+    engine_args: Optional[Dict[str, Any]] = None,
+    sampling_args: Optional[Dict[str, Any]] = None,
 ):
     # Setting environment variables (default to single device)
-    rank, local_rank, world_size = int(os.environ.get("RANK", 0)), int(os.environ.get("LOCAL_RANK", 0)), int(os.environ.get("WORLD_SIZE", 1))
+    rank, world_size = int(os.environ.get("RANK", 0)), int(os.environ.get("WORLD_SIZE", 1))
+    local_rank = int(os.environ.get("LOCAL_RANK", str(rank)))
     os.environ["CUDA_VISIBLE_DEVICES"] = str(local_rank)
+    if log_level != "DEBUG":
+        os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
     os.environ["VLLM_USE_V1"] = "0"
 
-    # Create communication (for multi-node settings)
+    # Setup logging
+    from loguru import logger as loguru_logger
+    loguru_logger.remove()  # Remove default handlers
+    format = f"[Rank {rank}] <green>{{time:YYYY-MM-DD HH:mm:ss}}</green> | <level>{{level}}</level> | <level>{{message}}</level>"
+    loguru_logger.add(sys.stdout, format=format, colorize=True, level=log_level)
+    global logger
+    logger = loguru_logger.bind(rank=rank)
+
+    # Setup communication (for multi-node settings)
     if world_size > 1:
         logger.info("Setting up P2P communication")
         global node
-        node = Node()
+        seed = os.environ.get("IROH_SEED")
+        node = Node.with_seed(num_streams=1, seed=int(seed) if seed is not None else seed)
         logger.info(f"Connect to node with: {node.node_id()}")
         time.sleep(1)
 
@@ -77,20 +93,17 @@ def main(
     # Create vLLM class
     logger.info("Setting up vLLM")
     from vllm import LLM, SamplingParams
-    llm = LLM(
-        model=model,
-        download_dir=download_dir,
-        max_model_len=1024,
-        enforce_eager=True
-    )
+    
+    # Initialize engine with provided args
+    llm = LLM(**(engine_args or {}), enforce_eager=True)
 
     if world_size > 1:
         model : nn.Module = llm.llm_engine.model_executor.driver_worker.model_runner.model
 
         if rank == 0:
             # First stage
-            lasy_layer : nn.Module = model.model.layers[-1]
-            lasy_layer.register_forward_hook(send_intermediate_states)
+            last_layer : nn.Module = model.model.layers[-1]
+            last_layer.register_forward_hook(send_intermediate_states)
 
             sampler : nn.Module = model.sampler
             sampler.register_forward_hook(recv_output)
@@ -113,29 +126,72 @@ def main(
             layer.register_forward_pre_hook(partial(print_layer_input, layer_index=layer_idx))
             layer.register_forward_hook(partial(print_layer_output, layer_index=layer_idx))
 
-    parallel_prompts, num_new_tokens = 1, 256
-    prompts = ["Hi, my name is"]
-    batch_size = len(prompts)
-    sampling_params = SamplingParams(n=parallel_prompts, max_tokens=num_new_tokens, min_tokens=num_new_tokens, seed=69)
+    # Start generation
+    logger.info("Generating...")
+    sampling_params = SamplingParams(**(sampling_args or {}))
     start_generate = time.perf_counter()
     outputs = llm.generate(prompts, sampling_params=sampling_params, use_tqdm=False)
     generate_time = time.perf_counter() - start_generate
-    token_generated = batch_size * parallel_prompts * num_new_tokens
 
+    # Print generations
     if rank == world_size - 1:
         for completion in outputs:
-            print(f"{completion.prompt}{completion.outputs[0].text}")
+            logger.info(f"{completion.prompt}{completion.outputs[0].text}")
 
-    print(f"Time to generate: {generate_time:.2f} seconds")
-    print(f"Tokens generated: {token_generated}")
-    print(f"Tokens per second: {token_generated / generate_time:.2f}")
+    # Print throughput
+    token_generated = len(prompts) * sampling_params.n * sampling_params.max_tokens
+    throughput = token_generated / generate_time
+    logger.info(f"Generated {token_generated} tokens in {generate_time:.2f} seconds")
+    logger.info(f"Throughput: {throughput:.2f} tokens/second")
+
+    # Destroy torch.distributed process group
+    destroy_process_group()
 
 if __name__ == "__main__":
-    assert os.environ.get("HF_TOKEN") is not None, "Set HF_TOKEN environment variable"
-
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, required=True)
-    parser.add_argument("--download-dir", type=str, default=None)
 
+    # Generation arguments
+    parser.add_argument("--prompts", type=str, nargs="+", default=["Hi, my name is"])
+    parser.add_argument("--log-level", type=str, default="INFO")
+
+    # Engine arguments
+    engine_group = parser.add_argument_group("Engine Arguments")
+    engine_group.add_argument("--model", type=str, required=True)
+    engine_group.add_argument("--download-dir", type=str, default=None)
+    engine_group.add_argument("--tensor-parallel-size", type=int, default=1)
+    engine_group.add_argument("--gpu-memory-utilization", type=float, default=0.90)
+
+    # Sampling arguments
+    sampling_group = parser.add_argument_group("Sampling Arguments")
+    sampling_group.add_argument("--n", type=int, default=1)
+    sampling_group.add_argument("--temperature", type=float, default=1.0)
+    sampling_group.add_argument("--top-p", type=float, default=1.0)
+    sampling_group.add_argument("--top-k", type=int, default=-1)
+    sampling_group.add_argument("--max-tokens", type=int, default=16)
+    sampling_group.add_argument("--min-tokens", type=int, default=0)
+    sampling_group.add_argument("--seed", type=int, default=None)
+    
     args = parser.parse_args()
-    main(**vars(args))
+    
+    # Separate engine and sampling arguments
+    engine_args = {}
+    sampling_args = {}
+    
+    # Collect engine arguments
+    for arg in ["model", "download_dir", "tensor_parallel_size", "gpu_memory_utilization"]:
+        value = getattr(args, arg)
+        if value is not None:
+            engine_args[arg] = value
+    
+    # Collect sampling arguments
+    for arg in ["n", "temperature", "top_p", "top_k", "max_tokens", "min_tokens", "seed"]:
+        value = getattr(args, arg)
+        if value is not None:
+            sampling_args[arg] = value
+    
+    main(
+        prompts=args.prompts,
+        log_level=args.log_level,
+        engine_args=engine_args,
+        sampling_args=sampling_args,
+    )
