@@ -6,6 +6,7 @@ from torch.distributed import destroy_process_group
 import torch.nn as nn
 import time
 from typing import Optional, Dict, Any, List
+import json
 
 from iroh_py import Node
 
@@ -42,6 +43,7 @@ def send_output(_, __, output):
 def main(
     prompts: List[str],
     prompt_file: Optional[str],
+    output_file: Optional[str],
     log_level: str,
     engine_args: Optional[Dict[str, Any]] = None,
     sampling_args: Optional[Dict[str, Any]] = None,
@@ -119,22 +121,32 @@ def main(
     if prompt_file is not None:
         logger.info(f"Reading prompts from {prompt_file}")
         with open(prompt_file, "r") as f:
-            prompts = [line.strip() for line in f.readlines()]
+            prompts = [json.loads(line)["prompt"] for line in f if line.strip()]
 
     # Start generation
     logger.info("Generating...")
     sampling_params = SamplingParams(**(sampling_args or {}))
     start_generate = time.perf_counter()
-    outputs = llm.generate(prompts, sampling_params=sampling_params, use_tqdm=False)
+    completions = llm.generate(prompts, sampling_params=sampling_params, use_tqdm=False)
     generate_time = time.perf_counter() - start_generate
 
-    # Print generations
-    tokens_generated = 0
+    # Write outputs to file
+    print(completions)
+    if output_file is not None:
+        with open(output_file, 'w') as f:
+            for completion in completions:
+                for output in completion.outputs:
+                    prompt = completion.prompt
+                    completion = output.text
+                    f.write(json.dumps({"prompt": prompt, "completion": completion}))
+                    f.write("\n")
+
+    # Print performance
     if rank == world_size - 1:
-        for completion in outputs:
+        tokens_generated = 0
+        for completion in completions:
             for output in completion.outputs:
                 tokens_generated += len(output.token_ids)
-                logger.info(f"{completion.prompt}{output.text}")
 
         # Print throughput
         throughput = tokens_generated / generate_time
@@ -150,6 +162,7 @@ if __name__ == "__main__":
     # Generation arguments
     parser.add_argument("--prompts", type=str, nargs="+", default=["Hi, my name is"])
     parser.add_argument("--prompt-file", type=str, default=None)
+    parser.add_argument("--output-file", type=str, default=None)
     parser.add_argument("--log-level", type=str, default="INFO")
 
     # Engine arguments
@@ -191,6 +204,7 @@ if __name__ == "__main__":
     main(
         prompts=args.prompts,
         prompt_file=args.prompt_file,
+        output_file=args.output_file,
         log_level=args.log_level,
         engine_args=engine_args,
         sampling_args=sampling_args,
