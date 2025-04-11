@@ -5,7 +5,6 @@ import pickle
 from torch.distributed import destroy_process_group
 import torch.nn as nn
 import time
-from functools import partial
 from typing import Optional, Dict, Any, List
 
 from iroh_py import Node
@@ -16,14 +15,9 @@ import autorootcwd  # noqa: F401
 logger = None
 node = None
 
-def print_layer_input(_, input, layer_index: int):
-    logger.debug(f"Layer: {layer_index} input: {input[1].shape}")
-
-def print_layer_output(_, __, output, layer_index: int):
-    logger.debug(f"Layer: {layer_index} output: {output[0].shape}")
-
 def send_intermediate_states(_, __, output):
     hidden_states, residual = output
+    logger.debug(f"Sending hidden_states: {hidden_states.shape} and residual: {residual.shape}")
     node.isend(pickle.dumps(hidden_states.to("cpu")), tag=0, latency=None).wait()
     node.isend(pickle.dumps(residual.to("cpu")), tag=0, latency=None).wait()
 
@@ -32,18 +26,22 @@ def recv_intermediate_states(_, input):
     device = positions.device
     hidden_states = pickle.loads(node.irecv(tag=0).wait()).to(device)
     residual = pickle.loads(node.irecv(tag=0).wait()).to(device)
+    logger.debug(f"Received hidden_states: {hidden_states.shape} and residual: {residual.shape}")
 
     return positions, hidden_states, residual
 
 def recv_output(_, __, ___):
     output = pickle.loads(node.irecv(tag=0).wait())
+    logger.debug("Received sampling output")
     return output
 
 def send_output(_, __, output):
+    logger.debug("Sending sampling output")
     node.isend(pickle.dumps(output), tag=0, latency=None).wait()
 
 def main(
     prompts: List[str],
+    prompt_file: Optional[str],
     log_level: str,
     engine_args: Optional[Dict[str, Any]] = None,
     sampling_args: Optional[Dict[str, Any]] = None,
@@ -117,10 +115,11 @@ def main(
             first_layer.register_forward_pre_hook(recv_intermediate_states)
             last_layer.register_forward_hook(send_intermediate_states)
 
-        for layer_idx, layer in enumerate(model.model.layers):
-            layer : nn.Module = layer
-            layer.register_forward_pre_hook(partial(print_layer_input, layer_index=layer_idx))
-            layer.register_forward_hook(partial(print_layer_output, layer_index=layer_idx))
+    # Start generation
+    if prompt_file is not None:
+        logger.info(f"Reading prompts from {prompt_file}")
+        with open(prompt_file, "r") as f:
+            prompts = [line.strip() for line in f.readlines()]
 
     # Start generation
     logger.info("Generating...")
@@ -150,6 +149,7 @@ if __name__ == "__main__":
 
     # Generation arguments
     parser.add_argument("--prompts", type=str, nargs="+", default=["Hi, my name is"])
+    parser.add_argument("--prompt-file", type=str, default=None)
     parser.add_argument("--log-level", type=str, default="INFO")
 
     # Engine arguments
