@@ -136,9 +136,7 @@ def main(
         with open(output_file, 'w') as f:
             for completion in completions:
                 for output in completion.outputs:
-                    prompt = completion.prompt
-                    completion = output.text
-                    f.write(json.dumps({"prompt": prompt, "completion": completion}))
+                    f.write(json.dumps({"prompt": completion.prompt, "completion": output.text}))
                     f.write("\n")
 
     # Print performance
