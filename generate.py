@@ -158,6 +158,7 @@ if __name__ == "__main__":
     engine_group.add_argument("--download-dir", type=str, default=os.environ.get("CACHE_DIR", None))
     engine_group.add_argument("--tensor-parallel-size", type=int, default=1)
     engine_group.add_argument("--gpu-memory-utilization", type=float, default=0.90)
+    engine_group.add_argument("--max-model-len", type=int, default=None)
 
     # Sampling arguments
     sampling_group = parser.add_argument_group("Sampling Arguments")
@@ -176,7 +177,7 @@ if __name__ == "__main__":
     sampling_args = {}
     
     # Collect engine arguments
-    for arg in ["model", "download_dir", "tensor_parallel_size", "gpu_memory_utilization"]:
+    for arg in ["model", "download_dir", "tensor_parallel_size", "gpu_memory_utilization", "max_model_len"]:
         value = getattr(args, arg)
         if value is not None:
             engine_args[arg] = value
