@@ -190,6 +190,7 @@ if __name__ == "__main__":
     
     main(
         prompts=args.prompts,
+        prompt_file=args.prompt_file,
         log_level=args.log_level,
         engine_args=engine_args,
         sampling_args=sampling_args,
