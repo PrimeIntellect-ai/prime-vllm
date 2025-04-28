@@ -8,7 +8,7 @@ import time
 from typing import Optional, Dict, Any, List
 import json
 
-from iroh_py import Node
+from prime_iroh import Node
 
 import autorootcwd  # noqa: F401
 

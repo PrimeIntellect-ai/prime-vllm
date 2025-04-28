@@ -8,14 +8,12 @@
 <p align="center">
 
 <h3 align="center">
-[WIP] vLLM-Iroh
+PRIME-VLLM: Run vLLM pipeline parallel inference over public networks
 </h3>
 
 ---
 
-This codebase integrates vLLM with our custom P2P communication library, in order to run pipeline parallel inference across geographically distributed nodes. It works
-by hijacking the pipeline parallel vLLM implementation to support sending and receiving intermediate activations, and sampling outputs between nodes using blocking
-send and receive primitives that are hooked into vLLM using PyTorch pre- and post-hooks. The codebase has two main entrypoints: 
+This codebase integrates vLLM with our custom P2P communication library `prime-iroh`, in order to run pipeline parallel inference across geographically distributed nodes. It works by hijacking the pipeline parallel vLLM implementation to support sending and receiving intermediate activations, and sampling outputs between nodes using send and receive primitives that are hooked into vLLM using PyTorch pre- and post-hooks. The codebase has two main entrypoints: 
 
 - `generate.py` is used to generate text given model and generation parameters possibly pipelining over public networks.
 - `shard.py` is used to pre-shard models and save them locally or upload them to the Hugging Face Hub.
@@ -27,7 +25,7 @@ send and receive primitives that are hooked into vLLM using PyTorch pre- and pos
 **Quick Install:** Run the following command for a quick install:
 
 ```
-curl -sSL https://raw.githubusercontent.com/PrimeIntellect-ai/vllm-iroh/refs/heads/main/script/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/PrimeIntellect-ai/prime-vllm/refs/heads/master/script/install.sh | bash
 ```
 
 **Manual Install:** First, install `uv` and `cargo` to build the project.
@@ -45,7 +43,7 @@ source $HOME/.cargo/env
 Then, clone the repository and install the dependencies.
 
 ```bash
-git clone git@github.com:PrimeIntellect-ai/vllm-iroh.git && cd vllm-iroh
+git clone git@github.com:PrimeIntellect-ai/prime-vllm.git && cd prime-vllm
 uv sync
 ```
 

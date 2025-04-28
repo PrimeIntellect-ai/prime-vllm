@@ -1,15 +1,15 @@
 [project]
-name = "vllm-over-ip"
+name = "prime-vllm"
 version = "0.1.0"
-description = "Add your description here"
+description = "PRIME-VLLM: Modded vLLM to run pipeline parallelism over public networks"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "transformers>=4.50.3",
     "vllm>=0.8.2",
-    "iroh_py @ git+ssh://git@github.com/primeintellect-ai/iroh_py.git@ea7dbc7",
     "autorootcwd>=1.0.1",
     "loguru>=0.7.3",
+    "prime-iroh @ git+https://github.com/PrimeIntellect-ai/prime-iroh.git@65a48f0",
 ]
 
 [dependency-groups]
