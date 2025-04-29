@@ -1,0 +1,71 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": "${command:pickArgs}",
+            "preLaunchTask": "Load Environment Variables"
+        },
+        {
+            "name": "Debug Generation (Single Node)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/generate.py",
+            "console": "integratedTerminal",
+            "preLaunchTask": "Load Environment Variables",
+            "env": {"RANK": "0", "WORLD_SIZE": "1"},
+            "args": "--model Qwen/Qwen3-8B --temperature 0.6 --top-p 0.95 --top-k 20 --prompt-file prompts-simple.jsonl --min-tokens 128 --max-tokens 128 --n 2"
+        },
+        {
+            "name": "Node 1/2",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/generate.py",
+            "console": "integratedTerminal",
+            "preLaunchTask": "Load Environment Variables",
+            "env": {
+                "RANK": "0",
+                "LOCAL_RANK": "0",
+                "WORLD_SIZE": "2",
+                "IROH_SEED": "0",
+                "IROH_PEER_ID": "ff87a0b0a3c7c0ce827e9cada5ff79e75a44a0633bfcb5b50f99307ddb26b337"
+            },
+            "args": "--model mikasenghaas/Qwen3-14B-0.2 --temperature 0.6 --top-p 0.95 --top-k 20 --prompt-file prompts-simple.jsonl --min-tokens 128 --max-tokens 128 --n 2",
+            "presentation": {
+                "hidden": true
+            }
+        },
+        {
+            "name": "Node 2/2",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/generate.py",
+            "console": "integratedTerminal",
+            "preLaunchTask": "Load Environment Variables",
+            "env": {
+                "RANK": "1",
+                "LOCAL_RANK": "1",
+                "WORLD_SIZE": "2",
+                "IROH_SEED": "1",
+                "IROH_PEER_ID": "ee1aa49a4459dfe813a3cf6eb882041230c7b2558469de81f87c9bf23bf10a03"
+            },
+            "args": "--model mikasenghaas/Qwen3-14B-1.2 --temperature 0.6 --top-p 0.95 --top-k 20 --prompt-file prompts-simple.jsonl --min-tokens 128 --max-tokens 128 --n 2",
+            "presentation": {
+                "hidden": true
+            }
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Debug Generation (2 Nodes)",
+            "configurations": ["Node 1/2", "Node 2/2"],
+        },
+    ]
+}

@@ -1,0 +1,11 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Load Environment Variables",
+            "type": "shell",
+            "command": "export $(cat .env | xargs)",
+            "problemMatcher": []
+        }
+    ]
+} 

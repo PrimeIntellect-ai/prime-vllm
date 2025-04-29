@@ -132,7 +132,6 @@ def main(
     generate_time = time.perf_counter() - start_generate
 
     # Write outputs to file
-    print(completions)
     if output_file is not None:
         with open(output_file, 'w') as f:
             for completion in completions:
