@@ -94,21 +94,22 @@ def main(
     llm = LLM(**(engine_args or {}), enforce_eager=True)
 
     if world_size > 1:
-        model : nn.Module = llm.llm_engine.model_executor.driver_worker.model_runner.model
+        model_runner : nn.Module = llm.llm_engine.model_executor.driver_worker.model_runner
+        model : nn.Module = model_runner.model
 
         if rank == 0:
             # First stage
             last_layer : nn.Module = model.model.layers[-1]
             last_layer.register_forward_hook(send_intermediate_states)
 
-            sampler : nn.Module = model.sampler
+            sampler : nn.Module = model_runner.sampler
             sampler.register_forward_hook(recv_output)
         elif rank == world_size - 1:
             # Last stage
             first_layer : nn.Module = model.model.layers[0]
             first_layer.register_forward_pre_hook(recv_intermediate_states)
 
-            sampler : nn.Module = model.sampler
+            sampler : nn.Module = model_runner.sampler
             sampler.register_forward_hook(send_output)
         else:
             # Intermediate stage
@@ -117,7 +118,7 @@ def main(
             first_layer.register_forward_pre_hook(recv_intermediate_states)
             last_layer.register_forward_hook(send_intermediate_states)
 
-    # Start generation
+    # Read prompts from file
     if prompt_file is not None:
         logger.info(f"Reading prompts from {prompt_file}")
         with open(prompt_file, "r") as f:

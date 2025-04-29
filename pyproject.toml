@@ -5,8 +5,8 @@ description = "PRIME-VLLM: Modded vLLM to run pipeline parallelism over public n
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "transformers>=4.50.3",
-    "vllm>=0.8.2",
+    "transformers>=4.51.3",
+    "vllm>=0.8.5",
     "autorootcwd>=1.0.1",
     "loguru>=0.7.3",
     "prime-iroh @ git+https://github.com/PrimeIntellect-ai/prime-iroh.git@65a48f0",
