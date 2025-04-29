@@ -12,7 +12,11 @@ log_info() {
 
 main() {
     log_info "Cloning repository..."
-    git clone git@github.com:PrimeIntellect-ai/prime-vllm.git
+    if git ls-remote git@github.com:PrimeIntellect-ai/prime-vllm.git &>/dev/null; then
+        git clone git@github.com:PrimeIntellect-ai/prime-vllm.git
+    else
+        git clone https://github.com/PrimeIntellect-ai/prime-vllm.git
+    fi
     
     log_info "Entering project directory..."
     cd prime-vllm
