@@ -11,7 +11,6 @@ import argparse
 from typing import Optional
 
 import torch.nn as nn
-
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from huggingface_hub import create_repo, upload_folder
 
@@ -56,8 +55,6 @@ def create_shard(
     num_shards: int,
     model_layers_key: str = "model.layers",
     config_layers_key: str = "num_hidden_layers",
-    lm_head_key: str = "lm_head",
-    embed_tokens_key: str = "model.embed_tokens",
 ):
     # Load the full model and tokenizer
     model = AutoModelForCausalLM.from_pretrained(model_name, cache_dir=cache_dir, torch_dtype="auto")
@@ -88,22 +85,6 @@ def create_shard(
     rsetattr(shard.config, config_layers_key, num_layers)
     shard.config.shard_idx = shard_idx
     shard.config.num_shards = num_shards
-
-    # Get the state dict
-    # state_dict = shard.state_dict()
-    
-    # # Handle embedding and LM head based on shard position
-    # if shard_idx > 0:
-    #     # Remove embedding on all but first shard
-    #     # del state_dict[f"{embed_tokens_key}.weight"]
-    #     rsetattr(shard, embed_tokens_key, FakeEmbedding(shard.config.hidden_size, shard.dtype))
-    # if shard_idx < num_shards - 1:
-    #     # Remove LM head on all but last shard
-    #     # del state_dict[f"{lm_head_key}.weight"]
-    #     rsetattr(shard, lm_head_key, FakeLMHead(shard.config.vocab_size))
-    
-    # Load the modified state dict back to the model
-    # shard.load_state_dict(state_dict, strict=False)
 
     return shard, tokenizer
 
@@ -167,8 +148,6 @@ if __name__ == "__main__":
     parser.add_argument("--remote-dir", type=str, default=None, help="Remote directory to upload shards")
     parser.add_argument("--model-layers-key", type=str, default="model.layers")
     parser.add_argument("--config-layers-key", type=str, default="num_hidden_layers")
-    parser.add_argument("--lm-head-key", type=str, default="lm_head")
-    parser.add_argument("--embed-tokens-key", type=str, default="model.embed_tokens")
     args = parser.parse_args()
     
     main(**vars(args)) 

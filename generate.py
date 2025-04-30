@@ -1,17 +1,23 @@
+"""
+Script to run inference with vLLM pipeline parallel inference over public networks.
+
+Check usage:
+uv run generate.py -h
+"""
+import autorootcwd  # noqa: F401
+
 import os
 import sys
-import argparse
-import pickle
-from torch.distributed import destroy_process_group
-import torch.nn as nn
 import time
-from typing import Optional, Dict, Any, List
-from functools import partial
 import json
+import pickle
+import argparse
+from typing import Optional, Dict, Any, List
+
+import torch.nn as nn
+from torch.distributed import destroy_process_group
 
 from prime_iroh import Node
-
-import autorootcwd  # noqa: F401
 
 # Globals
 logger = None
@@ -149,18 +155,10 @@ def main(
     logger.info("Generating...")
     sampling_params = SamplingParams(**(sampling_args or {}))
     start_generate = time.perf_counter()
-    completions = llm.generate(prompts, sampling_params=sampling_params, use_tqdm=False)
+    completions = llm.generate(prompts, sampling_params=sampling_params, use_tqdm=not log_level == "DEBUG")
     generate_time = time.perf_counter() - start_generate
 
-    # Write outputs to file
-    if output_file is not None:
-        with open(output_file, 'w') as f:
-            for completion in completions:
-                for output in completion.outputs:
-                    f.write(json.dumps({"prompt": completion.prompt, "completion": output.text}))
-                    f.write("\n")
-
-    # Print performance
+    # Print performance (on last rank)
     if rank == world_size - 1:
         tokens_generated = 0
         for completion in completions:
@@ -169,8 +167,18 @@ def main(
 
         # Print throughput
         throughput = tokens_generated / generate_time
+        logger.info(f"Done!")
         logger.info(f"Generated {tokens_generated} tokens in {generate_time:.2f} seconds")
         logger.info(f"Throughput: {throughput:.2f} tokens/second")
+
+    # Write outputs to file
+    if output_file is not None:
+        logger.info(f"Writing outputs to {output_file}")
+        with open(output_file, 'w') as f:
+            for completion in completions:
+                for output in completion.outputs:
+                    f.write(json.dumps({"prompt": completion.prompt, "completion": output.text}))
+                    f.write("\n")
 
     # Destroy torch.distributed process group
     destroy_process_group()
