@@ -88,7 +88,7 @@ To explore more command line arguments, run `uv run python generate.py --help`.
 
 ### Multi-Node
 
-To run distributed infernce, you will need to pre-shard your model. This can be done by running the `shard.py` script (see [Sharding](#sharding) for more information). 
+To run distributed inference, you will need to pre-shard your model. This can be done by running the `shard.py` script (see [Sharding](#sharding) for more information). 
 
 Once you sharded your model into as many shards as you have GPUs, running distributed inference is as easy as setting environment variables. For example, to run a model on two nodes, set the following environment variables on each node. 
 
