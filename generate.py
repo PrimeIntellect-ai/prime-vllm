@@ -6,6 +6,7 @@ from torch.distributed import destroy_process_group
 import torch.nn as nn
 import time
 from typing import Optional, Dict, Any, List
+from functools import partial
 import json
 
 from prime_iroh import Node
@@ -18,27 +19,35 @@ node = None
 
 def send_intermediate_states(_, __, output):
     hidden_states, residual = output
-    logger.debug(f"Sending hidden_states: {hidden_states.shape} and residual: {residual.shape}")
-    node.isend(pickle.dumps(hidden_states.to("cpu")), tag=0, latency=None).wait()
-    node.isend(pickle.dumps(residual.to("cpu")), tag=0, latency=None).wait()
+    serialized_hidden_states = pickle.dumps(hidden_states.to("cpu"))
+    serialized_residual = pickle.dumps(residual.to("cpu"))
+    node.isend(serialized_hidden_states, tag=0, latency=None).wait()
+    node.isend(serialized_residual, tag=0, latency=None).wait()
+    logger.debug(f"Sent hidden_states: {hidden_states.shape} ({len(serialized_hidden_states)} bytes sent) and residual: {residual.shape} ({len(serialized_residual)} bytes sent)")
 
 def recv_intermediate_states(_, input):
     positions, _, _ = input
     device = positions.device
-    hidden_states = pickle.loads(node.irecv(tag=0).wait()).to(device)
-    residual = pickle.loads(node.irecv(tag=0).wait()).to(device)
-    logger.debug(f"Received hidden_states: {hidden_states.shape} and residual: {residual.shape}")
+    serialized_hidden_states = node.irecv(tag=0).wait()
+    serialized_residual = node.irecv(tag=0).wait()
+    hidden_states = pickle.loads(serialized_hidden_states).to(device)
+    residual = pickle.loads(serialized_residual).to(device)
+    logger.debug(f"Got hidden_states: {hidden_states.shape} ({len(serialized_hidden_states)} bytes sent), residual: {residual.shape} ({len(serialized_residual)} bytes sent) and positions {positions.shape}")
 
     return positions, hidden_states, residual
 
-def recv_output(_, __, ___):
-    output = pickle.loads(node.irecv(tag=0).wait())
-    logger.debug("Received sampling output")
-    return output
+def recv_output(_, __, ___, relay=False):
+    serialized_output = node.irecv(tag=0).wait()
+    logger.debug(f"Received outputs ({len(serialized_output)} bytes sent)")
+    if relay:
+        node.isend(serialized_output, tag=0, latency=None).wait()
+        logger.debug(f"Sent outputs ({len(serialized_output)} bytes sent)")
+    return pickle.loads(serialized_output)
 
 def send_output(_, __, output):
-    logger.debug("Sending sampling output")
-    node.isend(pickle.dumps(output), tag=0, latency=None).wait()
+    serialized_output = pickle.dumps(output)
+    node.isend(serialized_output, tag=0, latency=None).wait()
+    logger.debug(f"Sent outputs ({len(serialized_output)} bytes sent)")
 
 def main(
     prompts: List[str],
@@ -93,30 +102,42 @@ def main(
     # Initialize engine with provided args
     llm = LLM(**(engine_args or {}), enforce_eager=True)
 
+    # Register hooks for multi-node communication
     if world_size > 1:
+        # Model runner owns model and sampler
         model_runner : nn.Module = llm.llm_engine.model_executor.driver_worker.model_runner
-        model : nn.Module = model_runner.model
 
-        if rank == 0:
-            # First stage
-            last_layer : nn.Module = model.model.layers[-1]
+        # Extract first and last layers (pre/post-hook to recv/send intermediate states)
+        first_layer : nn.Module = model_runner.model.model.layers[0]
+        last_layer : nn.Module = model_runner.model.model.layers[-1]
+
+        # Extract sampler (post-hook to recv/send outputs)
+        sampler : nn.Module = model_runner.sampler
+
+        # Don't relay outputs from stage with index -2->-1
+        do_relay = rank != world_size - 2 
+
+        if rank == 0: # First stage
+            # Send intermediate states to next stage (post-hook)
             last_layer.register_forward_hook(send_intermediate_states)
 
-            sampler : nn.Module = model_runner.sampler
-            sampler.register_forward_hook(recv_output)
-        elif rank == world_size - 1:
-            # Last stage
-            first_layer : nn.Module = model.model.layers[0]
+            # Receive outputs from last stage (post-hook)
+            sampler.register_forward_hook(partial(recv_output, relay=do_relay))
+        elif rank == world_size - 1: # Last stage
+            # Receive intermediate states from previous stage (pre-hook)
             first_layer.register_forward_pre_hook(recv_intermediate_states)
 
-            sampler : nn.Module = model_runner.sampler
+            # Send outputs to first  stage (post-hook)
             sampler.register_forward_hook(send_output)
         else:
-            # Intermediate stage
-            first_layer : nn.Module = model.model.layers[0]
-            last_layer : nn.Module = model.model.layers[-1]
+            # Receive intermediate states from previous stage and send positions to next stage (pre-hook)
             first_layer.register_forward_pre_hook(recv_intermediate_states)
+
+            # Send intermediate states to next stage (post-hook)
             last_layer.register_forward_hook(send_intermediate_states)
+
+            # Receive and relay outputs from last stage (post-hook)
+            sampler.register_forward_hook(partial(recv_output, relay=do_relay))
 
     # Read prompts from file
     if prompt_file is not None:
