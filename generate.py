@@ -12,6 +12,7 @@ import time
 import json
 import pickle
 import argparse
+from functools import partial
 from typing import Optional, Dict, Any, List
 
 import torch.nn as nn
