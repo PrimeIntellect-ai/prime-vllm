@@ -65,7 +65,9 @@ RANK=0 WORLD_SIZE=1 uv run generate.py --model <model_name>
 Run `uv run python generate.py --help` for more information on the available options.
 
 
-Running distributed inference is as easy as adjusting the environment variables to your setup and loading a pre-sharded model from HF (see [Sharding](#sharding) for more information). For example, to test distributed inference on two nodes, you can run the following commands. Make sure, that `<shard_name>` corresponds to valid Hf repositories holding the first and second shards of the model, respectively.
+Running distributed inference is as easy as adjusting the environment variables to your setup and loading a pre-sharded model from HF (see [Sharding](#sharding) for more information). 
+
+For example, to test distributed inference on two nodes, you can run the following commands on two nodes. Make sure, that `<shard_name>` corresponds to valid Hf repositories holding the first and second shards of the model, respectively.
 
 ```bash
 # On the first node
@@ -80,6 +82,8 @@ export IROH_SEED=1
 export IROH_PEER_ID=ee1aa49a4459dfe813a3cf6eb882041230c7b2558469de81f87c9bf23bf10a03
 RANK=1 WORLD_SIZE=2 uv run generate.py --model <shard_1_name>
 ```
+
+In the example above `IROH_PEER_ID` is the id of the partner node meaning tht node 1's id is `ee1aa49a4459dfe813a3cf6eb882041230c7b2558469de81f87c9bf23bf10a03`. The `IROH_SEED` ensures we always generate the same ID for the current node. 
 
 ## Sharding
 
