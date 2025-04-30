@@ -9,7 +9,7 @@ dependencies = [
     "vllm>=0.8.5",
     "autorootcwd>=1.0.1",
     "loguru>=0.7.3",
-    "prime-iroh @ git+https://github.com/PrimeIntellect-ai/prime-iroh.git@65a48f0",
+    "prime-iroh>=0.1.1",
 ]
 
 [dependency-groups]
