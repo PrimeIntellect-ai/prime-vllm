@@ -20,8 +20,13 @@
             "program": "${workspaceFolder}/generate.py",
             "console": "integratedTerminal",
             "preLaunchTask": "Load Environment Variables",
-            "env": {"RANK": "0", "WORLD_SIZE": "1"},
-            "args": "--model Qwen/Qwen3-8B --temperature 0.6 --top-p 0.95 --top-k 20 --prompt-file prompts-simple.jsonl --min-tokens 128 --max-tokens 128 --n 2"
+            "subProcess": true,
+            "justMyCode": false,
+            "env": {
+                "RANK": "0",
+                "WORLD_SIZE": "1",
+            },
+            "args": "--model Qwen/Qwen3-4B --temperature 0.6 --top-p 0.95 --top-k 20 --prompt-file prompts-simple.jsonl --output-file outputs.jsonl --min-tokens 5 --max-tokens 5 --n 2 --max-model-len 512",
         },
         {
             "name": "Node 1/2",
@@ -29,6 +34,8 @@
             "request": "launch",
             "program": "${workspaceFolder}/generate.py",
             "console": "integratedTerminal",
+            "subProcess": true,
+            "justMyCode": false,
             "preLaunchTask": "Load Environment Variables",
             "env": {
                 "RANK": "0",
@@ -48,6 +55,8 @@
             "request": "launch",
             "program": "${workspaceFolder}/generate.py",
             "console": "integratedTerminal",
+            "subProcess": true,
+            "justMyCode": false,
             "preLaunchTask": "Load Environment Variables",
             "env": {
                 "RANK": "1",
@@ -64,7 +73,7 @@
     ],
     "compounds": [
         {
-            "name": "Debug Generation (2 Nodes)",
+            "name": "Debug Generation (Two Nodes)",
             "configurations": ["Node 1/2", "Node 2/2"],
         },
     ]
