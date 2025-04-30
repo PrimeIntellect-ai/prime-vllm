@@ -28,16 +28,11 @@ This codebase integrates vLLM with our custom P2P communication library `prime-i
 curl -sSL https://raw.githubusercontent.com/PrimeIntellect-ai/prime-vllm/refs/heads/master/script/install.sh | bash
 ```
 
-**Manual Install:** First, install `uv` and `cargo` to build the project.
+**Manual Install:** First, install `uv` to build the project.
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source $HOME/.local/bin/env
-```
-
-```bash
-curl https://sh.rustup.rs -sSf | sh
-source $HOME/.cargo/env
 ```
 
 Then, clone the repository and install the dependencies.
