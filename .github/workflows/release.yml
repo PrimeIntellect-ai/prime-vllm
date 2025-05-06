@@ -33,8 +33,8 @@ jobs:
       - name: Generate Docker metadata
         id: meta
         run: |
-          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          echo "repo_lower=${REPO_LOWER}" >> $GITHUB_OUTPUT
+          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "repo_owner=${REPO_OWNER}" >> $GITHUB_OUTPUT
 
       - name: Build and push prime-vllm image
         uses: docker/build-push-action@v4
@@ -43,4 +43,4 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ steps.meta.outputs.repo_lower }}/prime-vllm:latest
+            ghcr.io/${{ steps.meta.outputs.repo_owner }}/prime-vllm:latest
