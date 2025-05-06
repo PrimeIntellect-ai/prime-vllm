@@ -51,6 +51,27 @@ export HF_TOKEN=<your-token>
 
 ## Inference
 
+### Using Docker
+
+First pull the latest image:
+
+```bash
+docker pull ghcr.io/primeintellect-ai/prime-vllm:latest
+```
+
+Then run the container:
+
+```bash
+docker run --rm --gpus all \
+  -e RANK=0 \
+  -e WORLD_SIZE=1 \
+  ghcr.io/primeintellect-ai/prime-vllm:latest \
+  --model Qwen/Qwen3-14B \
+  --temperature 0.6 \
+  --top-p 0.95 \
+  --top-k 20
+```
+
 ### Single Node
 
 To check that your installation has succeeded, you can run the following command to generate text with a small model on a single node:
@@ -153,5 +174,4 @@ uv run shard.py \
 ```
 
 This will automatically save the shards to subdirectories `shard_<shard_ix>` in the local directory and upload them to `<hf_username>/<repo_name>-<shard_ix>.<num_shards>` on the remote directory, e.g. like `mikasenghaas/Qwen3-14B-0.2` and `mikasenghaas/Qwen3-14B-1.2`.
-
 
