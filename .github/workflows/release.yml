@@ -13,7 +13,7 @@ permissions:
 jobs:
   build-and-release:
     name: Build and Create Release
-    runs-on: ubuntu-22.04
+    runs-on: xl-runner
     
     steps:
       - uses: actions/checkout@v3
