@@ -115,8 +115,6 @@ def main(
             num_shards,
             model_layers_key,
             config_layers_key,
-            lm_head_key,
-            embed_tokens_key,
         )
 
         # Save the shard locally
